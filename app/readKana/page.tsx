@@ -164,7 +164,9 @@ export default function ReadKana() {
     
     const userAnswer = userInput.trim().toLowerCase();
     const correctAnswer = currentKana.romaji.toLowerCase();
-    const isCorrect = userAnswer === correctAnswer;
+    // Allow both "wo" and "o" for を/ヲ
+    const isCorrect = userAnswer === correctAnswer || (correctAnswer === 'wo' && userAnswer === 'o');
+      
     
     // Update score function
     const updateScores = (scores: KanaChar[], scoreChange: number): KanaChar[] => {
@@ -196,8 +198,12 @@ export default function ReadKana() {
         nextQuestion();
       }, 500);
     } else {
-      // Check if input doesn't match the beginning of correct answer (wrong path)
-      if (!correctAnswer.startsWith(userAnswer)) {
+      // Check if on wrong path (also allow "o" for "wo")
+      const isOnCorrectPath = correctAnswer.startsWith(userAnswer) ||
+        (correctAnswer === 'wo' && 'wo'.startsWith(userAnswer)) ||
+        (correctAnswer === 'wo' && 'o'.startsWith(userAnswer));
+
+      if (!isOnCorrectPath) {
         setFeedback('incorrect');
         
         // Only decrease score once per question
