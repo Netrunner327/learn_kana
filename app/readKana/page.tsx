@@ -248,7 +248,7 @@ export default function ReadKana() {
           borderColor: 'var(--ctp-surface2)'
         }}
       >
-        ← Back to Home
+        ← Home
       </button>
 
       <main className="container mx-auto px-2 py-24">
