@@ -73,6 +73,7 @@ export default function ReadKana() {
   const [showKanaList, setShowKanaList] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasDecreasedScore = useRef(false);
+  const [showHint, setShowHint] = useState(false);
   
   // Quiz state
   const [hiraganaScores, setHiraganaScores] = useState<KanaChar[]>(initialHiragana);
@@ -171,7 +172,7 @@ export default function ReadKana() {
         if (k.kana === currentKana.kana && k.romaji === currentKana.romaji) {
           return {
             ...k,
-            score: Math.max(0, Math.min(100, k.score + scoreChange))
+            score: Math.max(0, Math.min(10, k.score + scoreChange))
           };
         }
         return k;
@@ -317,11 +318,29 @@ export default function ReadKana() {
                           feedback === 'incorrect' ? 'var(--ctp-red)' : 
                           'var(--ctp-surface2)'
             }}>
-              {/* Large Kana Display */}
-              <div className="text-8xl font-bold mb-6" style={{ color: 'var(--ctp-text)' }}>
+              {/* Large Kana Display with Hover */}
+              <div 
+                className="text-8xl font-bold mb-6 relative inline-block cursor-help"
+                style={{ color: 'var(--ctp-text)' }}
+                onMouseEnter={() => setShowHint(true)}
+                onMouseLeave={() => setShowHint(false)}
+              >
                 {currentKana.kana}
+                
+                {/* Tooltip on hover */}
+                {showHint && (
+                  <div 
+                    className="absolute -top-16 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg whitespace-nowrap text-2xl font-semibold"
+                    style={{
+                      backgroundColor: 'var(--ctp-blue)',
+                      color: 'var(--ctp-base)',
+                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+                    }}
+                  >
+                    {currentKana.romaji}
+                  </div>
+                )}
               </div>
-
               {/* Input Field */}
               <input
                 ref={inputRef}
@@ -360,7 +379,7 @@ export default function ReadKana() {
 
               {/* Score Display */}
               <div className="mt-6 text-sm" style={{ color: 'var(--ctp-subtext0)' }}>
-                Score: {currentKana.score}/100
+                Score: {currentKana.score}/10
               </div>
             </div>
           </div>
@@ -502,7 +521,7 @@ export default function ReadKana() {
                           <div 
                             style={{ 
                               height: '100%', 
-                              width: `${score}%`,
+                              width: `${score * 10}%`,
                               backgroundColor: 'var(--ctp-blue)',
                               transition: 'width 0.3s ease'
                             }} 
@@ -565,7 +584,7 @@ export default function ReadKana() {
                           <div 
                             style={{ 
                               height: '100%', 
-                              width: `${score}%`,
+                              width: `${score * 10}%`,
                               backgroundColor: 'var(--ctp-mauve)',
                               transition: 'width 0.3s ease'
                             }} 
