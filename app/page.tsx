@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Tutorial from "./components/Tutorial";
 import ThemeToggle from "./components/ThemeToggle";
 
-export default function Home() {
+export default function HomePage() {
   const [showTutorial, setShowTutorial] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     // Check if user has dismissed the tutorial before
@@ -46,8 +48,7 @@ export default function Home() {
           {/* Learn to Read Kana - Active */}
           <button
             onClick={() => {
-              // TODO: Navigate to reading practice
-              alert("Reading practice coming soon!");
+              router.push('/readKana');
             }}
             className="group relative overflow-hidden rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border-2"
             style={{
