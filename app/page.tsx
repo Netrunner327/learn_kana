@@ -74,28 +74,35 @@ export default function HomePage() {
             </div>
           </button>
 
-          {/* Learn to Write Kana - Disabled */}
-          <div className="group relative overflow-hidden rounded-2xl p-8 shadow-lg border-2 opacity-60 cursor-not-allowed" style={{
-            backgroundColor: 'var(--ctp-surface1)',
-            borderColor: 'var(--ctp-surface2)'
-          }}>
-            <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full opacity-50" style={{ backgroundColor: 'var(--ctp-overlay0)', opacity: 0.2 }} />
+          {/* Learn to Write Kana - Active */}
+          <button
+            onClick={() => {
+              router.push('/writeKana');
+            }}
+            className="group relative overflow-hidden rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border-2"
+            style={{
+              backgroundColor: 'var(--ctp-surface0)',
+              borderColor: 'var(--ctp-blue)'
+            }}
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 rounded-bl-full opacity-50 group-hover:opacity-70 transition-opacity" style={{ backgroundColor: 'var(--ctp-blue)', opacity: 0.2 }} />
             <div className="relative z-10 flex flex-col items-center gap-4">
-              <div className="text-6xl grayscale">✍️</div>
-              <h2 className="text-2xl font-bold" style={{ color: 'var(--ctp-overlay1)' }}>
+              <div className="text-6xl ">✍️</div>
+              <h2 className="text-2xl font-bold" style={{ color: 'var(--ctp-text)' }}>
                 Learn to Write Kana
               </h2>
-              <p className="text-center" style={{ color: 'var(--ctp-overlay0)' }}>
+              <p className="text-center" style={{ color: 'var(--ctp-subtext0)' }}>
                 Practice writing Japanese characters with stroke order
               </p>
-              <div className="mt-4 px-6 py-2 rounded-full font-semibold" style={{
-                backgroundColor: 'var(--ctp-surface2)',
-                color: 'var(--ctp-overlay0)'
+              <div className="mt-4 px-6 py-2 rounded-full font-semibold group-hover:opacity-90 transition-all" style={{
+                backgroundColor: 'var(--ctp-blue)',
+                color: 'var(--ctp-base)'
               }}>
-                Coming Soon
+                Start Learning
               </div>
             </div>
-          </div>
+          </button>
+
         </div>
 
         {/* Show Tutorial Button */}

@@ -41,7 +41,7 @@ export default function Tutorial({ onClose }: TutorialProps) {
                 </h3>
                 <p style={{ color: 'var(--ctp-subtext0)' }}>
                   Start with <strong style={{ color: 'var(--ctp-blue)' }}>Learn to Read Kana</strong> to practice recognizing Hiragana and Katakana characters. 
-                  The <strong style={{ color: 'var(--ctp-overlay1)' }}>Learn to Write Kana</strong> feature will be available soon!
+                  Then use the  <strong style={{ color: 'var(--ctp-blue)' }}>Learn to Write Kana</strong> section to practice stroke order of Hiragana and Katakana.
                 </p>
               </div>
             </div>
