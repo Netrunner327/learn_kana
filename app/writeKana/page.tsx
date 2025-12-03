@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ThemeToggle from "../components/ThemeToggle";
+import * as tf from '@tensorflow/tfjs';
+import { kanaLabels } from "../data/kanaLabels";
 import {
     KanaChar,
     initialHiragana,
@@ -18,6 +20,11 @@ export default function WriteKana() {
     const [isDrawing, setIsDrawing] = useState(false);
     const [showHint, setShowHint] = useState(false);
 
+    // Model state
+    const [model, setModel] = useState<tf.LayersModel | null>(null);
+    const [isModelLoading, setIsModelLoading] = useState(true);
+    const [isRecognizing, setIsRecognizing] = useState(false);
+
     // Quiz state - separate from readKana
     const [hiraganaScores, setHiraganaScores] = useState<KanaChar[]>(initialHiragana);
     const [katakanaScores, setKatakanaScores] = useState<KanaChar[]>(initialKatakana);
@@ -25,9 +32,28 @@ export default function WriteKana() {
     const [currentKana, setCurrentKana] = useState<KanaChar | null>(null);
     const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [debugPreview, setDebugPreview] = useState<string | null>(null);
+    const [showModelView, setShowModelView] = useState(false);
+    const [topPredictions, setTopPredictions] = useState<{kana: string, confidence: number}[]>([]);
+    const [expectedKana, setExpectedKana] = useState<string>('');
 
-    // DEBUG MODE - Set to false in production
-    const DEBUG_MODE = true;
+    // Load TensorFlow.js model
+    useEffect(() => {
+        async function loadModel() {
+            try {
+                console.log('Loading kana recognition model...');
+                const loadedModel = await tf.loadLayersModel('/models/kana/model.json');
+                setModel(loadedModel);
+                setIsModelLoading(false);
+                console.log('Model loaded successfully!');
+            } catch (error) {
+                console.error('Error loading model:', error);
+                alert('Failed to load recognition model. Please refresh the page.');
+                setIsModelLoading(false);
+            }
+        }
+        loadModel();
+    }, []);
 
     // Load scores from localStorage (separate keys for write mode)
     useEffect(() => {
@@ -168,18 +194,152 @@ export default function WriteKana() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
 
-    // Check drawing (placeholder - no recognition yet)
-    const checkDrawing = () => {
-        // DEBUG MODE: Randomly return correct/incorrect
-        if (DEBUG_MODE) {
-            const isCorrect = Math.random() > 0.5; // 50% chance of correct
-            updateScore(isCorrect);
+    // Check drawing with ML model
+    const checkDrawing = async () => {
+        if (!model || !canvasRef.current || !currentKana) {
+            alert('Model not loaded yet. Please wait...');
             return;
         }
 
-        // TODO: Add handwriting recognition here
-        // For now, just show a message
-        alert('Handwriting recognition not yet implemented!\n\nClick "Skip" to practice more characters.');
+        setIsRecognizing(true);
+
+        try {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            // Create a temporary square canvas for preprocessing
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 64;
+            tempCanvas.height = 64;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) return;
+
+            // Fill with white background (important for consistent preprocessing)
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, 64, 64);
+
+            // Get the drawn content from original canvas
+            // Find bounding box of drawn content to crop and center it
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+            
+            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+            let hasContent = false;
+            
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const i = (y * canvas.width + x) * 4;
+                    const alpha = pixels[i + 3];
+                    if (alpha > 0) { // If pixel has been drawn
+                        hasContent = true;
+                        minX = Math.min(minX, x);
+                        minY = Math.min(minY, y);
+                        maxX = Math.max(maxX, x);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+            }
+
+            if (!hasContent) {
+                alert('Please draw something first!');
+                setIsRecognizing(false);
+                return;
+            }
+
+            // Add padding
+            const padding = 10;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX = Math.min(canvas.width, maxX + padding);
+            maxY = Math.min(canvas.height, maxY + padding);
+
+            const cropWidth = maxX - minX;
+            const cropHeight = maxY - minY;
+
+            // Calculate scale to fit in 64x64 while maintaining aspect ratio
+            const scale = Math.min(54 / cropWidth, 54 / cropHeight); // Leave 5px margin
+            const scaledWidth = cropWidth * scale;
+            const scaledHeight = cropHeight * scale;
+
+            // Center the drawing
+            const offsetX = (64 - scaledWidth) / 2;
+            const offsetY = (64 - scaledHeight) / 2;
+
+            // Draw cropped and scaled content
+            tempCtx.drawImage(
+                canvas,
+                minX, minY, cropWidth, cropHeight,
+                offsetX, offsetY, scaledWidth, scaledHeight
+            );
+
+            // Convert to grayscale tensor
+            let tensor = tf.browser.fromPixels(tempCanvas, 1)
+                .toFloat()
+                .div(255.0) // Normalize to 0-1
+                .expandDims(0); // Add batch dimension [1, 64, 64, 1]
+
+            console.log('Tensor shape:', tensor.shape);
+
+            // Run prediction
+            const predictions = model.predict(tensor) as tf.Tensor;
+            const probabilities = await predictions.data();
+
+            // Get top 3 predictions for debugging
+            const topIndices = Array.from(probabilities)
+                .map((prob, idx) => ({ prob, idx }))
+                .sort((a, b) => b.prob - a.prob)
+                .slice(0, 3);
+
+            // Store for display
+            setTopPredictions(topIndices.map(({ prob, idx }) => ({
+                kana: kanaLabels[idx],
+                confidence: prob
+            })));
+            setExpectedKana(currentKana.kana);
+
+            console.log('Top 3 predictions:');
+            topIndices.forEach(({ prob, idx }, i) => {
+                console.log(`${i + 1}. ${kanaLabels[idx]} - ${(prob * 100).toFixed(1)}%`);
+            });
+
+            // Get top prediction
+            const maxIndex = topIndices[0].idx;
+            const predictedKana = kanaLabels[maxIndex];
+            const confidence = topIndices[0].prob;
+
+            console.log(`Expected: ${currentKana.kana}`);
+            
+            // Save preprocessed image for debugging (you can see what model sees)
+            const preprocessedImage = tempCanvas.toDataURL();
+            setDebugPreview(preprocessedImage);
+
+            // More lenient checking: accept if expected is in top 3 with >10% confidence
+            let isCorrect = false;
+            const expectedInTop3 = topIndices.find(({ idx }) => kanaLabels[idx] === currentKana.kana);
+            
+            if (predictedKana === currentKana.kana) {
+                // Perfect match
+                isCorrect = true;
+            } else if (expectedInTop3 && expectedInTop3.prob > 0.1) {
+                // Close enough - expected is in top 3 with >10% confidence
+                console.log(`Close! Expected ${currentKana.kana} was #${topIndices.indexOf(expectedInTop3) + 1} with ${(expectedInTop3.prob * 100).toFixed(1)}%`);
+                isCorrect = true; // Accept it as correct
+            }
+            
+            // Update score
+            updateScore(isCorrect);
+
+            // Clean up tensors
+            tensor.dispose();
+            predictions.dispose();
+
+        } catch (error) {
+            console.error('Recognition error:', error);
+            alert('Recognition failed. Please try again.');
+        } finally {
+            setIsRecognizing(false);
+        }
     };
 
     // Skip to next question
@@ -230,6 +390,18 @@ export default function WriteKana() {
     return (
         <div className="min-h-screen" style={{ backgroundColor: 'var(--ctp-base)' }}>
             <ThemeToggle />
+
+            {/* Loading Model Indicator */}
+            {isModelLoading && (
+                <div className="fixed top-20 right-6 z-40 px-4 py-2 rounded-lg font-medium"
+                    style={{
+                        backgroundColor: 'var(--ctp-yellow)',
+                        color: 'var(--ctp-base)'
+                    }}
+                >
+                    Loading model...
+                </div>
+            )}
 
             {/* Back Button */}
             <button
@@ -374,6 +546,144 @@ export default function WriteKana() {
                                 />
                             </div>
 
+                            {/* Model View Preview */}
+                            {showModelView && (
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <div className="text-sm font-semibold" style={{ color: 'var(--ctp-subtext1)' }}>
+                                            Model's View
+                                        </div>
+                                        <button
+                                            onClick={() => setShowModelView(false)}
+                                            className="text-xs px-2 py-1 rounded transition-all hover:opacity-80"
+                                            style={{
+                                                backgroundColor: 'var(--ctp-surface2)',
+                                                color: 'var(--ctp-subtext0)'
+                                            }}
+                                        >
+                                            Hide
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-center">
+                                        <div className="relative">
+                                            {debugPreview ? (
+                                                <img 
+                                                    src={debugPreview} 
+                                                    alt="What the model sees" 
+                                                    className="rounded-lg shadow-lg"
+                                                    style={{
+                                                        width: '160px',
+                                                        height: '160px',
+                                                        imageRendering: 'pixelated',
+                                                        border: '3px solid',
+                                                        borderColor: 'var(--ctp-surface2)',
+                                                        backgroundColor: 'white'
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div 
+                                                    className="rounded-lg shadow-lg flex items-center justify-center"
+                                                    style={{
+                                                        width: '160px',
+                                                        height: '160px',
+                                                        border: '3px dashed',
+                                                        borderColor: 'var(--ctp-surface2)',
+                                                        backgroundColor: 'var(--ctp-surface0)',
+                                                        color: 'var(--ctp-subtext0)'
+                                                    }}
+                                                >
+                                                    <div className="text-center text-xs">
+                                                        Draw & Check<br/>to see preview
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div 
+                                                className="absolute -bottom-2 -right-2 px-2 py-1 rounded text-xs font-mono"
+                                                style={{
+                                                    backgroundColor: 'var(--ctp-surface0)',
+                                                    color: 'var(--ctp-subtext0)',
+                                                    border: '1px solid',
+                                                    borderColor: 'var(--ctp-surface2)'
+                                                }}
+                                            >
+                                                64×64
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Predictions Display */}
+                                    {topPredictions.length > 0 && (
+                                        <div className="mt-4 space-y-2">
+                                            <div className="text-xs font-semibold" style={{ color: 'var(--ctp-subtext0)' }}>
+                                                Expected: <span className="text-base font-bold" style={{ color: 'var(--ctp-text)' }}>{expectedKana}</span>
+                                            </div>
+                                            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--ctp-subtext0)' }}>
+                                                Top 3 Predictions:
+                                            </div>
+                                            {topPredictions.map((pred, idx) => {
+                                                const isExpected = pred.kana === expectedKana;
+                                                return (
+                                                    <div 
+                                                        key={idx}
+                                                        className="flex items-center justify-between px-3 py-2 rounded"
+                                                        style={{
+                                                            backgroundColor: isExpected ? 'var(--ctp-green)' : 'var(--ctp-surface1)',
+                                                            color: isExpected ? 'var(--ctp-base)' : 'var(--ctp-text)',
+                                                            border: '1px solid',
+                                                            borderColor: isExpected ? 'var(--ctp-green)' : 'var(--ctp-surface2)'
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-mono" style={{ opacity: 0.7 }}>#{idx + 1}</span>
+                                                            <span className="text-lg font-bold">{pred.kana}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div 
+                                                                className="h-2 rounded-full"
+                                                                style={{
+                                                                    width: '60px',
+                                                                    backgroundColor: isExpected ? 'var(--ctp-base)' : 'var(--ctp-surface0)',
+                                                                    opacity: 0.3
+                                                                }}
+                                                            >
+                                                                <div 
+                                                                    className="h-full rounded-full"
+                                                                    style={{
+                                                                        width: `${pred.confidence * 100}%`,
+                                                                        backgroundColor: isExpected ? 'var(--ctp-base)' : 'var(--ctp-text)'
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-xs font-mono font-semibold" style={{ minWidth: '45px', textAlign: 'right' }}>
+                                                                {(pred.confidence * 100).toFixed(1)}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Show Model View Button (when hidden) */}
+                            {!showModelView && (
+                                <div className="mb-4 text-center">
+                                    <button
+                                        onClick={() => setShowModelView(true)}
+                                        className="text-sm px-4 py-2 rounded-lg transition-all hover:opacity-80"
+                                        style={{
+                                            backgroundColor: 'var(--ctp-surface1)',
+                                            color: 'var(--ctp-subtext1)',
+                                            border: '1px solid',
+                                            borderColor: 'var(--ctp-surface2)'
+                                        }}
+                                    >
+                                        👁️ Show Model's View
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Action Buttons */}
                             <div className="flex gap-4 mb-4">
                                 <button
@@ -390,13 +700,14 @@ export default function WriteKana() {
                                 </button>
                                 <button
                                     onClick={checkDrawing}
-                                    className="flex-1 px-6 py-3 rounded-lg font-semibold transition-all hover:opacity-80"
+                                    disabled={isRecognizing || isModelLoading}
+                                    className="flex-1 px-6 py-3 rounded-lg font-semibold transition-all hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
                                     style={{
                                         backgroundColor: 'var(--ctp-green)',
                                         color: 'var(--ctp-base)'
                                     }}
                                 >
-                                    Check
+                                    {isRecognizing ? 'Checking...' : 'Check'}
                                 </button>
                                 <button
                                     onClick={skipQuestion}
