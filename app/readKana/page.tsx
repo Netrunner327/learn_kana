@@ -140,7 +140,7 @@ export default function ReadKana() {
       // Move to next question after showing feedback
       setTimeout(() => {
         nextQuestion();
-      }, 500);
+      }, 150);
     } else {
       // Check if on wrong path (also allow "o" for "wo")
       const isOnCorrectPath = correctAnswer.startsWith(userAnswer) ||
