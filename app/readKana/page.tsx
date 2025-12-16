@@ -27,6 +27,7 @@ export default function ReadKana() {
   const [userInput, setUserInput] = useState('');
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [previousKana, setPreviousKana] = useState<KanaChar | null>(null);
 
   // Load scores from localStorage on mount
   useEffect(() => {
@@ -76,23 +77,30 @@ export default function ReadKana() {
     setUserInput('');
     setFeedback(null);
     hasDecreasedScore.current = false; // Reset penalty flag
-    
+
     let selectedKana: KanaChar;
-    
+
     if (quizMode === 'hiragana') {
-      selectedKana = selectWeightedKana(hiraganaScores);
+      do {
+        selectedKana = selectWeightedKana(hiraganaScores);
+      } while (previousKana && selectedKana.kana === previousKana.kana);
     } else if (quizMode === 'katakana') {
-      selectedKana = selectWeightedKana(katakanaScores);
+      do {
+        selectedKana = selectWeightedKana(katakanaScores);
+      } while (previousKana && selectedKana.kana === previousKana.kana);
     } else {
       // Both: randomly choose between hiragana and katakana
       const useHiragana = Math.random() < 0.5;
-      selectedKana = useHiragana 
-        ? selectWeightedKana(hiraganaScores)
-        : selectWeightedKana(katakanaScores);
+      do {
+        selectedKana = useHiragana 
+          ? selectWeightedKana(hiraganaScores)
+          : selectWeightedKana(katakanaScores);
+      } while (previousKana && selectedKana.kana === previousKana.kana);
     }
-    
+
+    setPreviousKana(selectedKana); // Update the previous kana
     setCurrentKana(selectedKana);
-    
+
     // Refocus input field after state updates
     setTimeout(() => {
       inputRef.current?.focus();
